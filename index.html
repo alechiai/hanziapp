@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HanziApp">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.svg">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+<title>HanziApp</title>
+</head>
+<body>
+<div id="app">
+
+  <!-- Banner API key mancante -->
+  <div id="banner" class="hidden" onclick="showScreen('settings')">
+    ⚠️ API Key Gemini non impostata — tocca per configurare
+  </div>
+
+  <!-- ── LIBRERIA ─────────────────────────────────── -->
+  <div id="screen-library" class="screen active">
+    <div class="screen-header">
+      <h1>库 Libreria</h1>
+      <p>Sfoglia e gestisci i tuoi caratteri</p>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-num" id="stat-known">0</div>
+        <div class="stat-label">Noti</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-label">Totali</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-due">0</div>
+        <div class="stat-label">Da ripassare</div>
+      </div>
+    </div>
+
+    <input type="search" class="search-bar" id="lib-search" placeholder="Cerca carattere, pinyin, significato…">
+
+    <div class="filter-row" id="lib-filters">
+      <button class="filter-btn active" data-filter="all">Tutti</button>
+      <button class="filter-btn" data-filter="known">Noti</button>
+      <button class="filter-btn" data-filter="unknown">Da studiare</button>
+      <button class="filter-btn" data-filter="1">HSK 1</button>
+      <button class="filter-btn" data-filter="2">HSK 2</button>
+      <button class="filter-btn" data-filter="3">HSK 3</button>
+      <button class="filter-btn" data-filter="4">HSK 4</button>
+    </div>
+
+    <div class="char-grid" id="char-grid"></div>
+  </div>
+
+  <!-- ── RIPASSO ──────────────────────────────────── -->
+  <div id="screen-review" class="screen">
+    <div id="review-start">
+      <div class="screen-header">
+        <h1>练 Ripasso</h1>
+        <p>Esercitati con i caratteri che conosci</p>
+      </div>
+      <div id="review-empty" class="empty-state hidden">
+        <div class="es-icon">📚</div>
+        <h3>Nessun carattere da ripassare</h3>
+        <p>Vai nella Libreria e segna almeno 5 caratteri come "noti" per iniziare.</p>
+      </div>
+      <div id="review-ready">
+        <div class="stat-card" style="margin-bottom:16px">
+          <div class="stat-num" id="review-due-count">0</div>
+          <div class="stat-label">Caratteri in scadenza oggi</div>
+        </div>
+        <button class="btn btn-primary btn-full" style="font-size:18px;padding:16px" onclick="startReview()">Inizia Ripasso</button>
+      </div>
+    </div>
+    <div id="review-session" style="display:none"></div>
+  </div>
+
+  <!-- ── NUOVI CARATTERI ──────────────────────────── -->
+  <div id="screen-learn" class="screen">
+    <div id="learn-start">
+      <div class="screen-header">
+        <h1>学 Nuovi Caratteri</h1>
+        <p>Impara caratteri nuovi con frasi contestuali</p>
+      </div>
+      <div id="learn-no-api" class="empty-state hidden">
+        <div class="es-icon">🔑</div>
+        <h3>API Key necessaria</h3>
+        <p>Configura la tua Gemini API key nelle Impostazioni per generare frasi di esempio.</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="showScreen('settings')">Apri Impostazioni</button>
+      </div>
+      <div id="learn-ready">
+        <div class="stat-card" style="margin-bottom:16px">
+          <div class="stat-num" id="learn-new-count">0</div>
+          <div class="stat-label">Caratteri nuovi disponibili</div>
+        </div>
+        <div class="settings-row" style="margin-bottom:12px">
+          <label>Nuovi caratteri per sessione</label>
+          <div class="slider-wrap">
+            <input type="range" id="learn-count-slider" min="5" max="10" value="7"
+              oninput="document.getElementById('learn-count-val').textContent=this.value">
+            <span class="slider-val" id="learn-count-val">7</span>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" style="font-size:18px;padding:16px" onclick="startLearn()">Inizia Sessione</button>
+      </div>
+    </div>
+    <div id="learn-session" style="display:none"></div>
+  </div>
+
+  <!-- ── IMPOSTAZIONI ─────────────────────────────── -->
+  <div id="screen-settings" class="screen">
+    <div class="screen-header">
+      <h1>⚙ Impostazioni</h1>
+    </div>
+
+    <div class="settings-section">
+      <h2>Gemini AI</h2>
+      <div class="settings-row" style="flex-direction:column;align-items:flex-start">
+        <label>API Key <span class="sub">Ottieni gratis su aistudio.google.com</span></label>
+        <input type="password" class="settings-input" id="set-api-key" placeholder="AIza…">
+      </div>
+      <div class="settings-row">
+        <label>Modello</label>
+        <select id="set-model">
+          <option value="gemini-1.5-flash">gemini-1.5-flash (consigliato)</option>
+          <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveSettings()">Salva Impostazioni</button>
+    </div>
+
+    <div class="settings-section">
+      <h2>Sessioni</h2>
+      <div class="settings-row">
+        <label>Esercizi per ripasso <span class="sub">sessione di ripasso</span></label>
+        <div class="slider-wrap">
+          <input type="range" id="set-ex-count" min="10" max="30" value="20"
+            oninput="document.getElementById('set-ex-val').textContent=this.value">
+          <span class="slider-val" id="set-ex-val">20</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Dati</h2>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" style="flex:1" onclick="exportData()">📤 Esporta</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('import-file').click()">📥 Importa</button>
+      </div>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)">
+      <button class="btn btn-danger btn-full" style="margin-top:10px" onclick="confirmReset()">🗑 Reset Progressi</button>
+    </div>
+  </div>
+
+  <!-- ── Bottom Nav ───────────────────────────────── -->
+  <nav id="bottom-nav">
+    <button class="nav-btn active" data-screen="library" onclick="showScreen('library')">
+      <span class="nav-icon">库</span>
+      <span>Libreria</span>
+    </button>
+    <button class="nav-btn" data-screen="review" onclick="showScreen('review')">
+      <span class="nav-icon">练</span>
+      <span>Ripasso</span>
+    </button>
+    <button class="nav-btn" data-screen="learn" onclick="showScreen('learn')">
+      <span class="nav-icon">学</span>
+      <span>Nuovi</span>
+    </button>
+    <button class="nav-btn" data-screen="settings" onclick="showScreen('settings')">
+      <span class="nav-icon">⚙</span>
+      <span>Impostazioni</span>
+    </button>
+  </nav>
+
+  <!-- ── Modal dettaglio carattere ──────────────── -->
+  <div class="modal-overlay" id="char-modal" onclick="closeModal()">
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-char" id="modal-char">字</div>
+      <div class="modal-pinyin" id="modal-pinyin">pīnyīn</div>
+      <div class="modal-meaning" id="modal-meaning">significato</div>
+      <div class="modal-meta" id="modal-meta">HSK 1</div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Chiudi</button>
+        <button class="btn btn-primary" id="modal-toggle-known" onclick="toggleKnownFromModal()">✓ Lo conosco</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Spinner ────────────────────────────────── -->
+  <div class="spinner-overlay" id="spinner">
+    <div class="spinner"></div>
+    <div class="spinner-text">Generando frasi con AI…</div>
+  </div>
+
+  <!-- ── Toast ──────────────────────────────────── -->
+  <div id="toast"></div>
+</div>
+
+<script src="data/hanzi.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
