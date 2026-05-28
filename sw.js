@@ -1,7 +1,7 @@
 // Service Worker — HanziApp
 // Cache-first per i file statici, network-first per Gemini API
 
-const CACHE_NAME = 'hanziapp-v1';
+const CACHE_NAME = 'hanziapp-v3';
 const STATIC_FILES = [
   './index.html',
   './style.css',
