@@ -168,7 +168,8 @@ async function callGemini(prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 400 }
+      generationConfig: { temperature: 0.7, maxOutputTokens: 400 },
+      thinkingConfig: { thinkingBudget: 0 }
     })
   });
   if (!res.ok) {
@@ -182,7 +183,8 @@ async function callGemini(prompt) {
     throw new Error(friendly);
   }
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = (parts.find(p => !p.thought) || parts[0] || {}).text || '';
   geminiCache[cacheKey] = text;
   return text;
 }
