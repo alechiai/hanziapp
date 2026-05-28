@@ -173,14 +173,13 @@ async function callGemini(prompt) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const msg = err?.error?.message || '';
-    let userMsg;
-    if (res.status === 400) userMsg = 'API: chiave non valida o modello errato';
-    else if (res.status === 403) userMsg = 'API: chiave non autorizzata — verifica su aistudio.google.com';
-    else if (res.status === 429) userMsg = 'API: troppe richieste, aspetta un momento';
-    else userMsg = `API errore: HTTP ${res.status}${msg ? ' — ' + msg : ''}`;
-    showToast(userMsg, 4000);
-    throw new Error(userMsg);
+    const msg = err?.error?.message || `HTTP ${res.status}`;
+    let friendly = msg;
+    if (res.status === 400) friendly = `Modello non valido o chiave errata (400): ${msg}`;
+    else if (res.status === 403) friendly = `Chiave non autorizzata (403) — verifica su aistudio.google.com`;
+    else if (res.status === 404) friendly = `Modello non trovato (404): ${model}`;
+    else if (res.status === 429) friendly = `Troppe richieste (429), aspetta`;
+    throw new Error(friendly);
   }
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -469,7 +468,7 @@ async function nextReviewExercise(pool) {
   } catch (e) {
     // Fallback a pinyin se Gemini fallisce
     renderPinyinExercise(pool, knownChars);
-    showToast('AI non disponibile, esercizio alternativo');
+    showToast('AI: ' + (e.message || 'errore sconosciuto'), 5000);
   } finally {
     showSpinner(false);
   }
