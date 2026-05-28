@@ -700,6 +700,47 @@ select {
   flex: none;
 }
 
+/* ── Lock screen PIN ─────────────────────────────── */
+#lock-screen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.lock-wrap {
+  width: 100%;
+  max-width: 340px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.lock-logo { font-size: 64px; margin-bottom: 12px; }
+.lock-wrap h2 { font-size: 28px; font-weight: 700; margin: 0 0 8px; }
+.lock-wrap p  { color: var(--text2); margin: 0 0 24px; font-size: 14px; }
+.pin-input-wrap { margin-bottom: 12px; }
+.pin-input-wrap input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 22px;
+  letter-spacing: 6px;
+  text-align: center;
+  background: var(--bg2);
+  border: 2px solid var(--bg3);
+  border-radius: 12px;
+  color: var(--text);
+  outline: none;
+  box-sizing: border-box;
+}
+.pin-input-wrap input:focus { border-color: var(--accent); }
+.pin-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin-bottom: 12px;
+  min-height: 20px;
+}
+.pin-error.hidden { visibility: hidden; }
+
 /* ── Toast ───────────────────────────────────────── */
 #toast {
   position: fixed;

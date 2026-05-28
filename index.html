@@ -13,7 +13,25 @@
 <title>HanziApp</title>
 </head>
 <body>
-<div id="app">
+<div id="lock-screen" style="display:none">
+  <div class="lock-wrap">
+    <div class="lock-logo">🈷️</div>
+    <h2 id="lock-title">HanziApp</h2>
+    <p id="lock-subtitle">Inserisci il PIN per accedere</p>
+    <div class="pin-input-wrap">
+      <input type="text" id="pin-input"
+             maxlength="9"
+             placeholder="000000aaa"
+             autocomplete="off"
+             autocapitalize="none"
+             spellcheck="false">
+    </div>
+    <div id="pin-error" class="pin-error hidden">PIN non corretto</div>
+    <button class="btn btn-primary btn-full" onclick="submitPin()">Sblocca</button>
+  </div>
+</div>
+
+<div id="app" style="display:none">
 
   <!-- Banner API key mancante -->
   <div id="banner" class="hidden" onclick="showScreen('settings')">
@@ -157,6 +175,7 @@
         <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('import-file').click()">📥 Importa</button>
       </div>
       <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)">
+      <button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="changePinFlow()">🔑 Cambia PIN</button>
       <button class="btn btn-danger btn-full" style="margin-top:10px" onclick="confirmReset()">🗑 Reset Progressi</button>
     </div>
   </div>

@@ -990,6 +990,79 @@ async function checkBanner() {
 }
 
 // ══════════════════════════════════════════════════
+// 0. LOCK SCREEN
+// ══════════════════════════════════════════════════
+const PIN_KEY = 'hanziapp_pin_hash';
+const PIN_REGEX = /^\d{6}[a-zA-Z]{3}$/;
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function initLock() {
+  const lockEl = document.getElementById('lock-screen');
+  const stored = localStorage.getItem(PIN_KEY);
+  if (!stored) {
+    document.getElementById('lock-title').textContent = 'Imposta PIN';
+    document.getElementById('lock-subtitle').textContent = '6 cifre + 3 lettere (es. 123456abc)';
+  }
+  lockEl.style.display = 'flex';
+}
+
+async function submitPin() {
+  const val    = document.getElementById('pin-input').value.trim();
+  const errEl  = document.getElementById('pin-error');
+  const stored = localStorage.getItem(PIN_KEY);
+
+  if (!PIN_REGEX.test(val)) {
+    errEl.textContent = 'Formato: 6 cifre + 3 lettere (es. 123456abc)';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const hash = await sha256(val);
+
+  if (!stored) {
+    localStorage.setItem(PIN_KEY, hash);
+    unlockApp();
+    return;
+  }
+
+  if (hash === stored) {
+    unlockApp();
+  } else {
+    errEl.textContent = 'PIN non corretto';
+    errEl.classList.remove('hidden');
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').focus();
+  }
+}
+
+function unlockApp() {
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  init();
+}
+
+function changePinFlow() {
+  const newPin = prompt('Inserisci il nuovo PIN (6 cifre + 3 lettere, es. 123456abc):');
+  if (!newPin) return;
+  if (!PIN_REGEX.test(newPin)) {
+    showToast('Formato non valido: 6 cifre + 3 lettere');
+    return;
+  }
+  sha256(newPin).then(hash => {
+    localStorage.setItem(PIN_KEY, hash);
+    showToast('PIN aggiornato ✓');
+  });
+}
+
+document.getElementById('pin-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitPin();
+});
+
+// ══════════════════════════════════════════════════
 // 12. INIT
 // ══════════════════════════════════════════════════
 async function init() {
@@ -1005,4 +1078,7 @@ async function init() {
   }
 }
 
-init();
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('app').style.display = 'none';
+  initLock();
+});
