@@ -168,7 +168,7 @@ async function callGemini(prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 400, thinkingConfig: { thinkingBudget: 0 } }
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } }
     })
   });
   if (!res.ok) {
@@ -208,23 +208,6 @@ Rispondi SOLO con questo JSON valido (nessun altro testo):
 {"sentence":"...","pinyin":"...","translation_it":"..."}`;
   const text = await callGemini(prompt);
   return parseJSON(text);
-}
-
-async function generateFillBlank(knownChars) {
-  const target = knownChars[Math.floor(Math.random() * knownChars.length)];
-  const pool = [...knownChars].filter(c => c.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 15);
-  const sample = pool.map(c => c.char).join('');
-  const prompt = `Crea UNA frase breve (5-7 caratteri) che contenga il carattere ${target.char} (${target.pinyin}, "${target.it}").
-Usa SOLO questi altri caratteri per completarla: ${sample}
-Particelle sempre permesse: 的 了 吗 呢 也 都
-Il carattere ${target.char} DEVE comparire UNA sola volta nella frase.
-Massimo 7 caratteri totali. Frase semplice, quotidiana.
-Rispondi SOLO con questo JSON valido:
-{"sentence_with_blank":"frase con ___ al posto di ${target.char}","pinyin":"pinyin completo della frase originale","answer":"${target.char}","translation_it":"traduzione italiana"}`;
-  const text = await callGemini(prompt);
-  const obj  = parseJSON(text);
-  obj.targetId = target.id;
-  return obj;
 }
 
 async function generateExampleSentence(newChar, knownChars) {
@@ -427,7 +410,8 @@ async function toggleKnownFromModal() {
 // ══════════════════════════════════════════════════
 // 7. RIPASSO
 // ══════════════════════════════════════════════════
-let reviewQueue = [], reviewIdx = 0, reviewTotal = 0;
+let exerciseBank = [], bankIdx = 0, reviewTotal = 0;
+let buildAnswer = [];
 
 function renderReviewStart() {
   const due = getDueIds();
@@ -444,86 +428,112 @@ function renderReviewStart() {
   }
 }
 
+async function generateExerciseBank(knownChars, discoveryChars = []) {
+  const shuffled = [...knownChars].sort(() => Math.random() - 0.5);
+  const vocab = shuffled.slice(0, 150).map(c => `${c.char}|${c.pinyin}|${c.it}`).join('\n');
+  const nTotal = Math.min(8, knownChars.length);
+  const discPart = discoveryChars.length > 0
+    ? '\nCARATTERI DA SCOPRIRE (introducili in 1-2 esercizi): ' +
+      discoveryChars.map(c => `${c.char}(${c.pinyin},"${c.it}")`).join(', ')
+    : '';
+  const prompt =
+    `Sei un insegnante esperto di cinese mandarino. Genera un banco di ${nTotal} esercizi VARIATI basati su questi caratteri noti:\n` +
+    vocab + discPart +
+    '\nTIPI disponibili (usa almeno 2 tipi diversi):\n' +
+    '1. translate_v2 — mostra frase cinese, studente la traduce\n' +
+    '2. fill_v2 — frase con carattere mancante, 4 opzioni multiple\n' +
+    '3. build — frase italiana, studente ricostruisce cinese scegliendo caratteri\n' +
+    '4. discover — presenta carattere NUOVO con esempio\n' +
+    'REGOLE:\n' +
+    '- Ogni frase max 7 caratteri\n' +
+    '- Usa SOLO caratteri dal vocabolario dato + particelle: 的 了 吗 呢 也 都\n' +
+    '- Per fill_v2: "distractors"=array di 3 caratteri errati ma plausibili\n' +
+    '- Per build: "words"=array dei caratteri/parole della frase cinese in ordine MESCOLATO\n' +
+    '- Per discover: usa campi char,pinyin,meaning_it,example_sentence,example_pinyin,example_translation_it\n' +
+    '- JSON puro, nessun testo extra\n' +
+    'Rispondi SOLO con un array JSON valido:\n' +
+    '[{"type":"translate_v2","sentence":"...","pinyin":"...","translation_it":"..."},' +
+    '{"type":"fill_v2","sentence_with_blank":"...","pinyin":"...","answer":"...","distractors":["","",""],"translation_it":"..."},' +
+    '{"type":"build","translation_it":"...","sentence":"...","pinyin":"...","words":["",""]},' +
+    '{"type":"discover","char":"...","pinyin":"...","meaning_it":"...","example_sentence":"...","example_pinyin":"...","example_translation_it":"..."}]';
+  const raw = await callGemini(prompt);
+  const m = raw.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('Bank non parsabile');
+  return JSON.parse(m[0]);
+}
+
 async function startReview() {
   const maxEx = +settingsCache['ex_count'] || 20;
-  // Priorità: caratteri in scadenza, poi tutti i noti
-  const dueIds  = getDueIds();
-  const allKnown = [...knownSet];
-  const pool = [...new Set([...dueIds, ...allKnown])].slice(0, maxEx * 3);
+  const knownChars = HANZI_DB.filter(c => knownSet.has(c.id));
+  const dueIds = getDueIds();
 
-  reviewQueue = [];
-  reviewIdx   = 0;
-  reviewTotal = Math.min(maxEx, pool.length);
+  const discoveryChars = knownChars.length >= 10
+    ? HANZI_DB.filter(c => !knownSet.has(c.id)).sort((a, b) => a.hsk - b.hsk).slice(0, 2)
+    : [];
 
   document.getElementById('review-start').style.display = 'none';
   document.getElementById('review-session').style.display = '';
 
-  await nextReviewExercise(pool);
-}
-
-async function nextReviewExercise(pool) {
-  if (reviewIdx >= reviewTotal) {
-    showReviewComplete();
-    return;
-  }
-
-  const knownChars = HANZI_DB.filter(c => knownSet.has(c.id));
-  const r = Math.random();
-  let type = r < 0.4 ? 'translate' : r < 0.7 ? 'pinyin' : 'fill';
-  // Fallback se pochi caratteri
-  if (knownChars.length < 3) type = 'pinyin';
-
   showSpinner(true);
   try {
-    if (type === 'translate') await renderTranslateExercise(knownChars);
-    else if (type === 'pinyin') renderPinyinExercise(pool, knownChars);
-    else await renderFillExercise(knownChars);
+    exerciseBank = await generateExerciseBank(knownChars, discoveryChars);
   } catch (e) {
-    // Fallback a pinyin se Gemini fallisce
-    renderPinyinExercise(pool, knownChars);
-    showToast('AI: ' + (e.message || 'errore sconosciuto'), 5000);
+    showToast('AI: ' + (e.message || 'errore'), 4000);
+    exerciseBank = [...knownChars].sort(() => Math.random() - 0.5).slice(0, maxEx)
+      .map(c => ({ type: 'pinyin_local', char: c.char, pinyin: c.pinyin, meaning_it: c.it, id: c.id }));
   } finally {
     showSpinner(false);
   }
+
+  if (exerciseBank.length < maxEx) {
+    const extra = HANZI_DB.filter(c => dueIds.includes(c.id))
+      .sort(() => Math.random() - 0.5)
+      .slice(0, maxEx - exerciseBank.length)
+      .map(c => ({ type: 'pinyin_local', char: c.char, pinyin: c.pinyin, meaning_it: c.it, id: c.id }));
+    exerciseBank = [...exerciseBank, ...extra];
+  }
+
+  bankIdx = 0;
+  reviewTotal = Math.min(maxEx, exerciseBank.length);
+  await nextReviewExercise();
+}
+
+async function nextReviewExercise() {
+  if (bankIdx >= reviewTotal) { showReviewComplete(); return; }
+  renderBankExercise(exerciseBank[bankIdx]);
 }
 
 function progressHTML() {
-  const pct = Math.round((reviewIdx / reviewTotal) * 100);
+  const pct = Math.round((bankIdx / reviewTotal) * 100);
   return `
     <div class="exercise-progress">
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" style="width:${pct}%"></div>
       </div>
-      <div class="progress-text">${reviewIdx}/${reviewTotal}</div>
+      <div class="progress-text">${bankIdx}/${reviewTotal}</div>
     </div>`;
 }
 
-// ── Esercizio A: Traduzione ──
-async function renderTranslateExercise(knownChars) {
-  const data = await generateTranslationExercise(knownChars);
-  const wrap = document.getElementById('review-session');
-  wrap.innerHTML = `
-    ${progressHTML()}
-    <div class="exercise-card">
-      <div class="exercise-type">Traduzione frase</div>
-      <div class="sentence-display">${data.sentence}</div>
-      <div class="pinyin-display" id="ex-pinyin">${data.pinyin}</div>
-      <button class="toggle-pinyin-btn" onclick="togglePinyin()">Mostra Pinyin</button>
-      <textarea class="answer-input" id="ex-answer" rows="2" placeholder="Scrivi la traduzione in italiano…"></textarea>
-      <div class="answer-reveal" id="ex-reveal">
-        <div class="label">Traduzione corretta:</div>
-        <div class="value">${data.translation_it}</div>
-      </div>
-      <button class="btn btn-primary btn-full" id="ex-check-btn" onclick="checkTranslate()" style="margin-top:12px">Controlla</button>
-      <div class="rating-row" id="ex-rating" style="display:none">
-        <button class="rating-btn" onclick="rateTranslate(1,'${encodeChars(data.sentence)}')">😕</button>
-        <button class="rating-btn" onclick="rateTranslate(3,'${encodeChars(data.sentence)}')">🤔</button>
-        <button class="rating-btn" onclick="rateTranslate(5,'${encodeChars(data.sentence)}')">😊</button>
-      </div>
-    </div>`;
+function renderBankExercise(ex) {
+  if (!ex) { showReviewComplete(); return; }
+  switch (ex.type) {
+    case 'translate_v2': renderTranslateExercise_v2(ex); break;
+    case 'fill_v2':      renderFillExercise_v2(ex); break;
+    case 'build':        renderBuildExercise(ex); break;
+    case 'discover':     renderDiscoverCard(ex); break;
+    default:             renderPinyinLocal(ex);
+  }
 }
 
-function encodeChars(s) { return encodeURIComponent(s); }
+function escapePy(s) { return s.replace(/'/g, "\\'"); }
+
+function normalizePinyin(s) {
+  return s.toLowerCase()
+    .replace(/[āáǎà]/g, 'a').replace(/[ēéěè]/g, 'e')
+    .replace(/[īíǐì]/g, 'i').replace(/[ōóǒò]/g, 'o')
+    .replace(/[ūúǔù]/g, 'u').replace(/[ǖǘǚǜü]/g, 'u')
+    .replace(/\s+/g, '');
+}
 
 function togglePinyin() {
   const el  = document.getElementById('ex-pinyin');
@@ -531,124 +541,206 @@ function togglePinyin() {
   el.classList.toggle('visible');
   btn.textContent = el.classList.contains('visible') ? 'Nascondi Pinyin' : 'Mostra Pinyin';
 }
-function checkTranslate() {
+
+// ── Esercizio A: Traduzione frase (v2) ──
+function renderTranslateExercise_v2(ex) {
+  const wrap = document.getElementById('review-session');
+  wrap.innerHTML = progressHTML() + `
+    <div class="exercise-card">
+      <div class="exercise-type">Traduzione frase</div>
+      <div class="sentence-display">${ex.sentence}</div>
+      <div class="pinyin-display" id="ex-pinyin">${ex.pinyin}</div>
+      <button class="toggle-pinyin-btn" onclick="togglePinyin()">Mostra Pinyin</button>
+      <textarea class="answer-input" id="ex-answer" rows="2" placeholder="Scrivi la traduzione in italiano…"></textarea>
+      <div class="answer-reveal" id="ex-reveal">
+        <div class="label">Traduzione corretta:</div>
+        <div class="value">${ex.translation_it}</div>
+      </div>
+      <button class="btn btn-primary btn-full" id="ex-check-btn" onclick="checkTranslate_v2()" style="margin-top:12px">Controlla</button>
+      <div class="rating-row" id="ex-rating" style="display:none">
+        <button class="rating-btn" onclick="rateBank(1)">😕</button>
+        <button class="rating-btn" onclick="rateBank(3)">🤔</button>
+        <button class="rating-btn" onclick="rateBank(5)">😊</button>
+      </div>
+    </div>`;
+}
+
+function checkTranslate_v2() {
   document.getElementById('ex-reveal').classList.add('visible');
   document.getElementById('ex-check-btn').style.display = 'none';
-  document.getElementById('ex-rating').style.display    = 'flex';
-}
-async function rateTranslate(q, encodedSentence) {
-  // Aggiorna SRS per i caratteri della frase che sono noti
-  const sentence = decodeURIComponent(encodedSentence);
-  const chars = [...sentence].filter(ch => {
-    const c = HANZI_DB.find(x => x.char === ch);
-    return c && knownSet.has(c.id);
-  });
-  for (const ch of chars) {
-    const c = HANZI_DB.find(x => x.char === ch);
-    if (c) await updateSRS(c.id, q);
-  }
-  reviewIdx++;
-  const knownChars = HANZI_DB.filter(c => knownSet.has(c.id));
-  await nextReviewExercise([...knownSet]);
-}
-
-// ── Esercizio B: Pinyin ──
-function renderPinyinExercise(pool, knownChars) {
-  const id = pool[reviewIdx % pool.length];
-  const c  = HANZI_DB.find(x => x.id === id);
-  if (!c) { reviewIdx++; nextReviewExercise(pool); return; }
-
-  const wrap = document.getElementById('review-session');
-  wrap.innerHTML = `
-    ${progressHTML()}
-    <div class="exercise-card">
-      <div class="exercise-type">Scrivi il Pinyin</div>
-      <div class="char-study">${c.char}</div>
-      <input type="text" class="answer-input" id="ex-pinyin-input" placeholder="es. nǐ" autocomplete="off"
-        onkeydown="if(event.key==='Enter')checkPinyin(${c.id},'${escapePy(c.pinyin)}')">
-      <div class="answer-reveal" id="ex-reveal">
-        <div class="label">Pinyin corretto:</div>
-        <div class="value">${c.pinyin} — ${c.it}</div>
-      </div>
-      <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="checkPinyin(${c.id},'${escapePy(c.pinyin)}')">Controlla</button>
-      <div class="rating-row" id="ex-rating" style="display:none">
-        <button class="rating-btn" onclick="ratePinyin(${c.id},1)">😕</button>
-        <button class="rating-btn" onclick="ratePinyin(${c.id},3)">🤔</button>
-        <button class="rating-btn" onclick="ratePinyin(${c.id},5)">😊</button>
-      </div>
-    </div>`;
-}
-
-function escapePy(s) { return s.replace(/'/g, "\\'"); }
-
-function normalizePinyin(s) {
-  return s.toLowerCase()
-    .replace(/[āáǎà]/g,'a').replace(/[ēéěè]/g,'e').replace(/[īíǐì]/g,'i')
-    .replace(/[ōóǒò]/g,'o').replace(/[ūúǔù]/g,'u').replace(/[ǖǘǚǜü]/g,'u')
-    .replace(/\s+/g,'');
-}
-
-async function checkPinyin(id, correct) {
-  const input = document.getElementById('ex-pinyin-input').value.trim();
-  const ok    = normalizePinyin(input) === normalizePinyin(correct);
-  document.getElementById('ex-reveal').classList.add('visible');
-  document.querySelector(`#review-session .btn.btn-primary`).style.display = 'none';
   document.getElementById('ex-rating').style.display = 'flex';
-  if (ok) showToast('✓ Corretto!');
-}
-async function ratePinyin(id, q) {
-  await updateSRS(id, q);
-  reviewIdx++;
-  await nextReviewExercise([...knownSet]);
 }
 
-// ── Esercizio C: Fill-in-the-blank ──
-async function renderFillExercise(knownChars) {
-  if (knownChars.length < 4) { renderPinyinExercise([...knownSet], knownChars); return; }
-  const data    = await generateFillBlank(knownChars);
-  const correct = data.answer;
-  // 3 distrattori
-  const pool3 = knownChars.filter(c => c.char !== correct).sort(() => Math.random() - .5).slice(0, 3);
-  const options = [correct, ...pool3.map(c => c.char)].sort(() => Math.random() - .5);
+async function rateBank(q) {
+  const ex = exerciseBank[bankIdx];
+  if (ex) {
+    if ((ex.type === 'translate_v2' || ex.type === 'build') && ex.sentence) {
+      for (const ch of [...ex.sentence]) {
+        const c = HANZI_DB.find(x => x.char === ch);
+        if (c && knownSet.has(c.id)) await updateSRS(c.id, q);
+      }
+    } else if (ex.id && knownSet.has(ex.id)) {
+      await updateSRS(ex.id, q);
+    }
+  }
+  bankIdx++;
+  await nextReviewExercise();
+}
 
+// ── Esercizio B: Fill-in-the-blank (v2) ──
+function renderFillExercise_v2(ex) {
+  const options = [ex.answer, ...(ex.distractors || [])].sort(() => Math.random() - 0.5);
+  const choicesHtml = options.map(ch =>
+    `<button class="choice-btn" onclick="checkFill_v2(this,'${ch}','${ex.answer}')">${ch}</button>`
+  ).join('');
+  const blankHtml = (ex.sentence_with_blank || '').replace('___', '<span class="blank-slot">___</span>');
   const wrap = document.getElementById('review-session');
-  wrap.innerHTML = `
-    ${progressHTML()}
+  wrap.innerHTML = progressHTML() + `
     <div class="exercise-card">
       <div class="exercise-type">Completa la frase</div>
-      <div class="sentence-blank">${data.sentence_with_blank.replace('___','<span class="blank-slot">___</span>')}</div>
-      <div style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:12px">${data.pinyin}</div>
-      <div class="choices-grid" id="choices-grid">
-        ${options.map(ch => `
-          <button class="choice-btn" onclick="checkFill(this,'${ch}','${correct}',${data.targetId||0})">${ch}</button>
-        `).join('')}
-      </div>
+      <div class="sentence-blank">${blankHtml}</div>
+      <div style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:12px">${ex.pinyin}</div>
+      <div class="choices-grid" id="choices-grid">${choicesHtml}</div>
       <div class="answer-reveal" id="ex-reveal" style="display:none">
         <div class="label">Traduzione:</div>
-        <div class="value">${data.translation_it}</div>
+        <div class="value">${ex.translation_it}</div>
       </div>
     </div>`;
 }
 
-async function checkFill(btn, chosen, correct, targetId) {
+async function checkFill_v2(btn, chosen, correct) {
   document.querySelectorAll('.choice-btn').forEach(b => b.classList.add('disabled'));
+  const q = chosen === correct ? 5 : 1;
   if (chosen === correct) {
     btn.classList.add('correct');
     showToast('✓ Corretto!');
   } else {
     btn.classList.add('wrong');
-    document.querySelectorAll('.choice-btn').forEach(b => {
-      if (b.textContent === correct) b.classList.add('correct');
-    });
+    document.querySelectorAll('.choice-btn').forEach(b => { if (b.textContent === correct) b.classList.add('correct'); });
     showToast('✗ Sbagliato');
   }
-  document.getElementById('ex-reveal').style.display = 'block';
-  document.getElementById('ex-reveal').classList.add('visible');
+  const revEl = document.getElementById('ex-reveal');
+  revEl.style.display = 'block';
+  revEl.classList.add('visible');
+  const ex = exerciseBank[bankIdx];
+  if (ex && ex.answer) {
+    const c = HANZI_DB.find(x => x.char === ex.answer);
+    if (c && knownSet.has(c.id)) await updateSRS(c.id, q);
+  }
+  bankIdx++;
+  setTimeout(() => nextReviewExercise(), 1800);
+}
 
-  const q = chosen === correct ? 5 : 1;
-  if (targetId) await updateSRS(targetId, q);
-  reviewIdx++;
-  setTimeout(() => nextReviewExercise([...knownSet]), 1800);
+// ── Esercizio C: Build (ricostruisci la frase) ──
+function renderBuildExercise(ex) {
+  buildAnswer = [];
+  const shuffled = [...(ex.words || [])].sort(() => Math.random() - 0.5);
+  const chipsHtml = shuffled.map((w, i) =>
+    `<button class="chip-btn" id="chip-${i}" onclick="selectChip(this,'${w}')">${w}</button>`
+  ).join('');
+  const encodedSentence = encodeURIComponent(ex.sentence || '');
+  const wrap = document.getElementById('review-session');
+  wrap.innerHTML = progressHTML() + `
+    <div class="exercise-card">
+      <div class="exercise-type">Ricostruisci la frase</div>
+      <div class="build-prompt">${ex.translation_it}</div>
+      <div class="build-answer-row" id="build-answer-row"><span class="build-placeholder">Tocca i caratteri →</span></div>
+      <div class="build-chips" id="build-chips">${chipsHtml}</div>
+      <div class="answer-reveal" id="ex-reveal" style="display:none">
+        <div class="label">Risposta corretta:</div>
+        <div class="value">${ex.sentence || ''} (${ex.pinyin || ''})</div>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:12px" id="build-check-btn" onclick="checkBuild('${encodedSentence}')">Controlla</button>
+    </div>`;
+}
+
+function selectChip(btn, word) {
+  if (btn.classList.contains('used')) {
+    const idx = buildAnswer.lastIndexOf(word);
+    if (idx !== -1) buildAnswer.splice(idx, 1);
+    btn.classList.remove('used');
+  } else {
+    buildAnswer.push(word);
+    btn.classList.add('used');
+  }
+  const row = document.getElementById('build-answer-row');
+  if (buildAnswer.length === 0) {
+    row.innerHTML = '<span class="build-placeholder">Tocca i caratteri →</span>';
+  } else {
+    row.innerHTML = buildAnswer.map(w => `<span class="build-token">${w}</span>`).join('');
+  }
+}
+
+async function checkBuild(encodedSentence) {
+  const correct = decodeURIComponent(encodedSentence);
+  const given   = buildAnswer.join('');
+  const ok      = given === correct;
+  const revEl   = document.getElementById('ex-reveal');
+  revEl.style.display = 'block';
+  revEl.classList.add('visible');
+  document.getElementById('build-check-btn').style.display = 'none';
+  showToast(ok ? '✓ Perfetto!' : '✗ Non corretto');
+  const q = ok ? 5 : 1;
+  const ex = exerciseBank[bankIdx];
+  if (ex && ex.sentence) {
+    for (const ch of [...ex.sentence]) {
+      const c = HANZI_DB.find(x => x.char === ch);
+      if (c && knownSet.has(c.id)) await updateSRS(c.id, q);
+    }
+  }
+  bankIdx++;
+  setTimeout(() => nextReviewExercise(), 2000);
+}
+
+// ── Esercizio D: Scoperta carattere ──
+function renderDiscoverCard(ex) {
+  const wrap = document.getElementById('review-session');
+  wrap.innerHTML = progressHTML() + `
+    <div class="exercise-card">
+      <div class="exercise-type">Scopri un nuovo carattere</div>
+      <div class="discover-char">${ex.char}</div>
+      <div class="discover-pinyin">${ex.pinyin}</div>
+      <div class="discover-meaning">${ex.meaning_it}</div>
+      <div class="example-sentence-box" style="margin-top:12px">
+        <div class="sentence">${ex.example_sentence}</div>
+        <div class="pinyin">${ex.example_pinyin}</div>
+        <div class="translation">${ex.example_translation_it}</div>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="rateBank(3)">Continua →</button>
+    </div>`;
+}
+
+// ── Esercizio E: Pinyin locale (fallback, no AI) ──
+function renderPinyinLocal(ex) {
+  const py = escapePy(ex.pinyin || '');
+  const id = ex.id || 0;
+  const wrap = document.getElementById('review-session');
+  wrap.innerHTML = progressHTML() + `
+    <div class="exercise-card">
+      <div class="exercise-type">Scrivi il Pinyin</div>
+      <div class="char-study">${ex.char}</div>
+      <input type="text" class="answer-input" id="ex-pinyin-input" placeholder="es. nǐ" autocomplete="off"
+        onkeydown="if(event.key==='Enter')checkPinyinLocal('${py}',${id})">
+      <div class="answer-reveal" id="ex-reveal">
+        <div class="label">Pinyin corretto:</div>
+        <div class="value">${ex.pinyin || ''} — ${ex.meaning_it || ''}</div>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="checkPinyinLocal('${py}',${id})">Controlla</button>
+      <div class="rating-row" id="ex-rating" style="display:none">
+        <button class="rating-btn" onclick="rateBank(1)">😕</button>
+        <button class="rating-btn" onclick="rateBank(3)">🤔</button>
+        <button class="rating-btn" onclick="rateBank(5)">😊</button>
+      </div>
+    </div>`;
+}
+
+function checkPinyinLocal(correct, id) {
+  const input = document.getElementById('ex-pinyin-input').value.trim();
+  const ok    = normalizePinyin(input) === normalizePinyin(correct);
+  document.getElementById('ex-reveal').classList.add('visible');
+  document.querySelector('#review-session .btn.btn-primary').style.display = 'none';
+  document.getElementById('ex-rating').style.display = 'flex';
+  if (ok) showToast('✓ Corretto!');
 }
 
 function showReviewComplete() {

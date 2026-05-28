@@ -481,6 +481,73 @@ html, body {
 .choice-btn.wrong   { border-color: var(--accent); background: rgba(233,69,96,.15); }
 .choice-btn.disabled { pointer-events: none; opacity: .5; }
 
+/* ── Build exercise ───────────────────────────────── */
+.build-prompt {
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 14px;
+  color: var(--text);
+}
+.build-answer-row {
+  min-height: 44px;
+  background: var(--bg3);
+  border-radius: var(--card-r);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.build-placeholder { color: var(--text2); font-size: 14px; }
+.build-token {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 18px;
+}
+.build-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.chip-btn {
+  background: var(--bg2);
+  border: 2px solid var(--bg3);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 20px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: opacity .2s, border-color .2s;
+}
+.chip-btn.used { opacity: .35; border-color: var(--accent); }
+.chip-btn:active { transform: scale(.95); }
+
+/* ── Discover card ────────────────────────────────── */
+.discover-char {
+  font-size: 72px;
+  text-align: center;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+.discover-pinyin {
+  font-size: 22px;
+  color: var(--accent);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.discover-meaning {
+  font-size: 18px;
+  color: var(--text2);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
 /* ── Rating ───────────────────────────────────────── */
 .rating-row {
   display: flex;
