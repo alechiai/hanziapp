@@ -1,5 +1,5 @@
 // Service Worker — HanziApp v4
-const CACHE_NAME = 'hanziapp-v5';
+const CACHE_NAME = 'hanziapp-v6';
 const STATIC_FILES = [
   './index.html',
   './style.css',

@@ -159,7 +159,7 @@ async function callGemini(prompt) {
   const model = await getSetting('gemini_model', 'gemini-2.5-flash');
   if (!key) throw new Error('API Key non configurata');
 
-  const cacheKey = prompt.slice(0, 300);
+  const cacheKey = prompt;
   if (geminiCache[cacheKey]) return geminiCache[cacheKey];
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
