@@ -94,7 +94,35 @@ html, body {
   margin-top: 4px;
 }
 
-/* ── Barra di ricerca e filtri ───────────────────── */
+/* ── Toolbar libreria (ricerca + seleziona) ──────── */
+.lib-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.lib-toolbar .search-bar { margin-bottom: 0; flex: 1; }
+
+.btn-select-mode {
+  background: var(--bg2);
+  border: 1px solid var(--bg3);
+  border-radius: var(--card-r);
+  color: var(--text2);
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all .2s;
+  flex-shrink: 0;
+}
+.btn-select-mode.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Barra di ricerca ────────────────────────────── */
 .search-bar {
   background: var(--bg2);
   border: 1px solid var(--bg3);
@@ -176,6 +204,39 @@ html, body {
 }
 .char-card:active { transform: scale(.97); }
 .char-card.known { border-color: var(--green); }
+.char-card.selectable { user-select: none; }
+.char-card.selected {
+  border-color: var(--accent);
+  background: rgba(233,69,96,.12);
+}
+
+/* Cerchio checkmark in selezione multipla */
+.select-check {
+  position: absolute;
+  top: 8px; left: 8px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--text2);
+  background: transparent;
+  transition: all .15s;
+}
+.char-card.selected .select-check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.char-card.selected .select-check::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 18px;
+  text-align: center;
+}
 
 .char-card .char-big {
   font-size: 40px;
@@ -606,6 +667,38 @@ select {
 .empty-state .es-icon { font-size: 60px; margin-bottom: 16px; }
 .empty-state h3 { font-size: 18px; color: var(--text); margin-bottom: 8px; }
 .empty-state p { font-size: 14px; line-height: 1.6; }
+
+/* ── Barra azioni selezione multipla ─────────────── */
+.select-bar {
+  position: fixed;
+  bottom: var(--nav-h);
+  left: 0; right: 0;
+  background: var(--bg2);
+  border-top: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  z-index: 110;
+  transform: translateY(200%);
+  transition: transform .25s ease-out;
+  pointer-events: none;
+}
+.select-bar.visible {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.select-count {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.select-bar .btn {
+  padding: 10px 14px;
+  font-size: 13px;
+  flex: none;
+}
 
 /* ── Toast ───────────────────────────────────────── */
 #toast {

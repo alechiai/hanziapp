@@ -225,6 +225,13 @@ Rispondi SOLO con questo JSON valido:
 // 5. NAVIGAZIONE
 // ══════════════════════════════════════════════════
 function showScreen(name) {
+  if (isSelecting && name !== 'library') {
+    isSelecting = false;
+    selectedIds.clear();
+    document.getElementById('select-bar').classList.remove('visible');
+    const btn = document.getElementById('btn-select');
+    if (btn) { btn.textContent = 'Seleziona'; btn.classList.remove('active'); }
+  }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`screen-${name}`).classList.add('active');
@@ -240,6 +247,8 @@ function showScreen(name) {
 // 6. LIBRERIA
 // ══════════════════════════════════════════════════
 let libFilter = 'all', libSearch = '';
+let isSelecting = false;
+let selectedIds = new Set();
 
 function renderLibrary() {
   updateStats();
@@ -272,15 +281,80 @@ function renderCharGrid() {
     );
   }
 
-  grid.innerHTML = data.map(c => `
-    <div class="char-card ${knownSet.has(c.id) ? 'known' : ''}" onclick="openModal(${c.id})">
-      ${knownSet.has(c.id) ? '<span class="known-badge">✓</span>' : ''}
-      <span class="hsk-badge">HSK${c.hsk}</span>
-      <div class="char-big">${c.char}</div>
-      <div class="char-pinyin">${c.pinyin}</div>
-      <div class="char-meaning">${c.it}</div>
-    </div>
-  `).join('');
+  grid.innerHTML = data.map(c => {
+    const isKnown    = knownSet.has(c.id);
+    const isSelected = isSelecting && selectedIds.has(c.id);
+    const classes    = ['char-card', isKnown ? 'known' : '', isSelecting ? 'selectable' : '', isSelected ? 'selected' : ''].filter(Boolean).join(' ');
+    const badge      = isSelecting ? '<span class="select-check"></span>' : (isKnown ? '<span class="known-badge">✓</span>' : '');
+    return `
+      <div class="${classes}" data-id="${c.id}" onclick="handleCardClick(${c.id})">
+        ${badge}
+        <span class="hsk-badge">HSK${c.hsk}</span>
+        <div class="char-big">${c.char}</div>
+        <div class="char-pinyin">${c.pinyin}</div>
+        <div class="char-meaning">${c.it}</div>
+      </div>`;
+  }).join('');
+
+  if (!isSelecting) {
+    grid.querySelectorAll('.char-card').forEach(card => {
+      const id = +card.dataset.id;
+      addLongPress(card, () => { enterSelectMode(); toggleSelectCard(id); });
+    });
+  }
+}
+
+function handleCardClick(id) {
+  if (isSelecting) toggleSelectCard(id);
+  else openModal(id);
+}
+
+function enterSelectMode() {
+  isSelecting = true;
+  selectedIds.clear();
+  document.getElementById('select-bar').classList.add('visible');
+  const btn = document.getElementById('btn-select');
+  if (btn) { btn.textContent = 'Fine'; btn.classList.add('active'); }
+  updateSelectionBar();
+  renderCharGrid();
+}
+
+function exitSelectMode() {
+  isSelecting = false;
+  selectedIds.clear();
+  document.getElementById('select-bar').classList.remove('visible');
+  const btn = document.getElementById('btn-select');
+  if (btn) { btn.textContent = 'Seleziona'; btn.classList.remove('active'); }
+  renderCharGrid();
+}
+
+function toggleSelectMode() {
+  if (isSelecting) exitSelectMode();
+  else enterSelectMode();
+}
+
+function toggleSelectCard(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  const card = document.querySelector('.char-card[data-id="' + id + '"]');
+  if (card) card.classList.toggle('selected', selectedIds.has(id));
+  updateSelectionBar();
+}
+
+function updateSelectionBar() {
+  const n = selectedIds.size;
+  document.getElementById('select-count').textContent =
+    n === 0 ? 'Seleziona caratteri' : n + ' selezionat' + (n === 1 ? 'o' : 'i');
+}
+
+async function markSelectedAsKnown() {
+  if (selectedIds.size === 0) { showToast('Nessun carattere selezionato'); return; }
+  const count = selectedIds.size;
+  const ids   = [...selectedIds];
+  for (const id of ids) await markKnown(id, true);
+  exitSelectMode();
+  updateStats();
+  showToast(count + ' caratter' + (count === 1 ? 'e aggiunto' : 'i aggiunti') + ' ai noti ✓');
 }
 
 // Filtri libreria
@@ -881,6 +955,16 @@ async function resetAll() {
 // ══════════════════════════════════════════════════
 // 11. UTILITY
 // ══════════════════════════════════════════════════
+function addLongPress(el, cb, ms = 500) {
+  let timer;
+  el.addEventListener('touchstart', e => {
+    timer = setTimeout(() => { e.preventDefault(); cb(); }, ms);
+  }, { passive: false });
+  ['touchend', 'touchmove', 'touchcancel'].forEach(ev =>
+    el.addEventListener(ev, () => clearTimeout(timer))
+  );
+}
+
 function showSpinner(show) {
   document.getElementById('spinner').classList.toggle('show', show);
 }

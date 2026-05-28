@@ -42,7 +42,10 @@
       </div>
     </div>
 
-    <input type="search" class="search-bar" id="lib-search" placeholder="Cerca carattere, pinyin, significato…">
+    <div class="lib-toolbar">
+      <input type="search" class="search-bar" id="lib-search" placeholder="Cerca carattere, pinyin, significato…">
+      <button class="btn-select-mode" id="btn-select" onclick="toggleSelectMode()">Seleziona</button>
+    </div>
 
     <div class="filter-row" id="lib-filters">
       <button class="filter-btn active" data-filter="all">Tutti</button>
@@ -156,6 +159,13 @@
       <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(this)">
       <button class="btn btn-danger btn-full" style="margin-top:10px" onclick="confirmReset()">🗑 Reset Progressi</button>
     </div>
+  </div>
+
+  <!-- ── Selection action bar ─────────────────────── -->
+  <div class="select-bar" id="select-bar">
+    <span class="select-count" id="select-count">Seleziona caratteri</span>
+    <button class="btn btn-success" onclick="markSelectedAsKnown()">✓ Segna noti</button>
+    <button class="btn btn-secondary" onclick="exitSelectMode()">Annulla</button>
   </div>
 
   <!-- ── Bottom Nav ───────────────────────────────── -->
