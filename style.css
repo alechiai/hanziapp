@@ -631,6 +631,26 @@ html, body {
 .summary-item .si-meaning { font-size: 14px; color: var(--text2); }
 .summary-item .si-action { display: flex; flex-direction: column; gap: 6px; }
 .si-action .btn { font-size: 13px; padding: 8px 12px; }
+.si-known-badge {
+  font-size: 13px;
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* ── Learn test ──────────────────────────────────── */
+.learn-test-label {
+  font-size: 14px;
+  color: var(--text2);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.learn-test-meaning {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 16px;
+}
 
 /* ── Impostazioni ────────────────────────────────── */
 .settings-section {

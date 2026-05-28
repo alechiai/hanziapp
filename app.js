@@ -159,7 +159,7 @@ async function callGemini(prompt) {
   const model = await getSetting('gemini_model', 'gemini-2.5-flash');
   if (!key) throw new Error('API Key non configurata');
 
-  const cacheKey = prompt.slice(0, 80);
+  const cacheKey = prompt.slice(0, 300);
   if (geminiCache[cacheKey]) return geminiCache[cacheKey];
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -759,6 +759,7 @@ function showReviewComplete() {
 // ══════════════════════════════════════════════════
 let learnChars = [], learnPhase = 'present', learnIdx = 0, learnExIdx = 0;
 let learnResults = {};
+let learnCurrentExample = null;
 
 function getNewChars(count) {
   const knownChars = new Set(HANZI_DB.filter(c => knownSet.has(c.id)).map(c => c.char));
@@ -792,6 +793,7 @@ async function startLearn() {
   learnExIdx  = 0;
   learnPhase  = 'present';
   learnResults = {};
+  learnCurrentExample = null;
 
   document.getElementById('learn-start').style.display   = 'none';
   document.getElementById('learn-session').style.display = '';
@@ -813,6 +815,8 @@ async function renderLearnPresent() {
   let example = { sentence: '—', pinyin: '', translation_it: '' };
   try { example = await generateExampleSentence(c, knownChars); } catch(_) {}
   showSpinner(false);
+
+  learnCurrentExample = example;
 
   const wrap = document.getElementById('learn-session');
   wrap.innerHTML = `
@@ -836,10 +840,89 @@ async function renderLearnPresent() {
         ${example.pinyin ? `<div class="pinyin">${example.pinyin}</div>` : ''}
         <div class="translation">${example.translation_it}</div>
       </div>
-      <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="learnNext()">
-        ${learnIdx < learnChars.length - 1 ? 'Prossimo →' : 'Inizia esercizi →'}
+      <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="showLearnTest(${c.id})">
+        Metti alla prova →
       </button>
     </div>`;
+}
+
+function showLearnTest(charId) {
+  const c = learnChars.find(x => x.id === charId);
+  if (!c) { learnNext(); return; }
+  renderLearnTest(c);
+}
+
+function renderLearnTest(c) {
+  const example = learnCurrentExample;
+  const sentence = (example && example.sentence) || '';
+  const useBlank = sentence.includes(c.char) && sentence !== '—';
+
+  // 3 distractors from learnChars + knownChars
+  const pool = [...learnChars, ...HANZI_DB.filter(x => knownSet.has(x.id))]
+    .filter(x => x.id !== c.id && x.char !== c.char)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+  const options = [c, ...pool].sort(() => Math.random() - 0.5);
+
+  const choicesHtml = options.map(opt =>
+    `<button class="choice-btn" onclick="checkLearnTest(this,'${opt.char}','${c.char}',${c.id})">${opt.char}</button>`
+  ).join('');
+
+  let questionHtml = '';
+  if (useBlank) {
+    const blank = sentence.replace(c.char, '<span class="blank-slot">___</span>');
+    questionHtml = `
+      <div class="learn-test-label">Quale carattere manca?</div>
+      <div class="sentence-blank">${blank}</div>
+      <div style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:12px">${example.translation_it}</div>`;
+  } else {
+    questionHtml = `
+      <div class="learn-test-label">Quale carattere significa:</div>
+      <div class="learn-test-meaning">${c.it}</div>`;
+  }
+
+  const wrap = document.getElementById('learn-session');
+  wrap.innerHTML = `
+    <div class="exercise-progress">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width:${Math.round((learnIdx/learnChars.length)*100)}%"></div>
+      </div>
+      <div class="progress-text">${learnIdx+1}/${learnChars.length}</div>
+    </div>
+    <div class="exercise-card">
+      <div class="exercise-type">Metti alla prova</div>
+      ${questionHtml}
+      <div class="choices-grid" id="lt-choices">${choicesHtml}</div>
+      <div class="answer-reveal" id="lt-reveal" style="display:none">
+        <div class="label">Carattere corretto:</div>
+        <div class="value">${c.char} — ${c.pinyin} — ${c.it}</div>
+      </div>
+      <div id="lt-next" style="display:none;margin-top:12px">
+        <button class="btn btn-primary btn-full" onclick="learnNext()">
+          ${learnIdx < learnChars.length - 1 ? 'Prossimo →' : 'Inizia esercizi →'}
+        </button>
+      </div>
+    </div>`;
+}
+
+async function checkLearnTest(btn, chosen, correct, charId) {
+  document.querySelectorAll('#lt-choices .choice-btn').forEach(b => b.classList.add('disabled'));
+  const ok = chosen === correct;
+  if (ok) {
+    btn.classList.add('correct');
+    await markKnown(charId, true);
+    showToast('✓ Carattere acquisito!');
+  } else {
+    btn.classList.add('wrong');
+    document.querySelectorAll('#lt-choices .choice-btn').forEach(b => {
+      if (b.textContent === correct) b.classList.add('correct');
+    });
+    showToast('✗ Riprova al prossimo ripasso');
+  }
+  const revEl = document.getElementById('lt-reveal');
+  if (revEl) { revEl.style.display = 'block'; revEl.classList.add('visible'); }
+  const nextEl = document.getElementById('lt-next');
+  if (nextEl) nextEl.style.display = 'block';
 }
 
 function learnNext() {
@@ -848,8 +931,8 @@ function learnNext() {
 }
 
 async function renderLearnExercise() {
-  const allChars   = [...HANZI_DB.filter(c => knownSet.has(c.id)), ...learnChars];
-  const maxEx      = learnChars.length * 2;
+  const allChars = [...HANZI_DB.filter(c => knownSet.has(c.id)), ...learnChars];
+  const maxEx    = learnChars.length * 2;
   if (learnExIdx >= maxEx) { renderLearnSummary(); return; }
 
   const r = Math.random();
@@ -947,7 +1030,7 @@ function renderLearnSummary() {
   wrap.innerHTML = `
     <div class="screen-header">
       <h1>Sessione completata!</h1>
-      <p>Seleziona i caratteri da aggiungere ai tuoi noti:</p>
+      <p>Seleziona i caratteri rimanenti da aggiungere ai noti:</p>
     </div>
     <ul class="summary-list">
       ${learnChars.map(c => `
@@ -958,8 +1041,11 @@ function renderLearnSummary() {
             <div class="si-meaning">${c.it}</div>
           </div>
           <div class="si-action">
-            <button class="btn btn-success" onclick="addToKnown(${c.id})">✓ Noto</button>
-            <button class="btn btn-secondary" onclick="skipNew(${c.id})">↩ Dopo</button>
+            ${knownSet.has(c.id)
+              ? '<span class="si-known-badge">✓ Acquisito</span>'
+              : `<button class="btn btn-success" onclick="addToKnown(${c.id})">✓ Noto</button>
+                 <button class="btn btn-secondary" onclick="skipNew(${c.id})">↩ Dopo</button>`
+            }
           </div>
         </li>
       `).join('')}
