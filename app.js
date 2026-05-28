@@ -173,7 +173,14 @@ async function callGemini(prompt) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `HTTP ${res.status}`);
+    const msg = err?.error?.message || '';
+    let userMsg;
+    if (res.status === 400) userMsg = 'API: chiave non valida o modello errato';
+    else if (res.status === 403) userMsg = 'API: chiave non autorizzata — verifica su aistudio.google.com';
+    else if (res.status === 429) userMsg = 'API: troppe richieste, aspetta un momento';
+    else userMsg = `API errore: HTTP ${res.status}${msg ? ' — ' + msg : ''}`;
+    showToast(userMsg, 4000);
+    throw new Error(userMsg);
   }
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';

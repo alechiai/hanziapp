@@ -1,7 +1,5 @@
-// Service Worker — HanziApp
-// Cache-first per i file statici, network-first per Gemini API
-
-const CACHE_NAME = 'hanziapp-v3';
+// Service Worker — HanziApp v4
+const CACHE_NAME = 'hanziapp-v4';
 const STATIC_FILES = [
   './index.html',
   './style.css',
@@ -13,7 +11,6 @@ const STATIC_FILES = [
   './icons/apple-touch-icon.svg'
 ];
 
-// Installazione: pre-cache di tutti i file statici
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_FILES))
@@ -21,7 +18,6 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Attivazione: elimina cache vecchie
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -31,27 +27,27 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch: cache-first per statici, network-first per Gemini
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
-  // Chiamate Gemini: sempre network (non cachare risposte AI)
+  // Gemini: sempre network
   if (url.includes('generativelanguage.googleapis.com')) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  // File statici: cache-first
+  // Stale-while-revalidate per file statici
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(response => {
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      });
-    })
+    caches.open(CACHE_NAME).then(cache =>
+      cache.match(event.request).then(cached => {
+        const fetchPromise = fetch(event.request).then(response => {
+          if (response && response.status === 200) {
+            cache.put(event.request, response.clone());
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || fetchPromise;
+      })
+    )
   );
 });
