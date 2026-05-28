@@ -196,9 +196,14 @@ function parseJSON(text) {
 }
 
 async function generateTranslationExercise(knownChars) {
-  const sample = knownChars.slice(0, 30).map(c => c.char).join('');
-  const prompt = `Genera UNA frase in cinese mandarino semplificato usando principalmente questi caratteri: ${sample}
-La frase deve essere naturale e di complessità media.
+  const shuffled = [...knownChars].sort(() => Math.random() - 0.5);
+  const sample = shuffled.slice(0, 20).map(c => c.char).join('');
+  const prompt = `Sei un insegnante di cinese per principianti. Crea UNA frase breve (5-7 caratteri) usando SOLO i caratteri di questa lista: ${sample}
+Regole RIGIDE:
+- Usa SOLO caratteri di questa lista + le particelle grammaticali: 的 了 吗 呢 也 都 (anche se non in lista)
+- Massimo 7 caratteri totali
+- Frase semplice, vita quotidiana, non poetica
+- Se non riesci con questi caratteri, semplifica fino all'osso
 Rispondi SOLO con questo JSON valido (nessun altro testo):
 {"sentence":"...","pinyin":"...","translation_it":"..."}`;
   const text = await callGemini(prompt);
@@ -206,12 +211,16 @@ Rispondi SOLO con questo JSON valido (nessun altro testo):
 }
 
 async function generateFillBlank(knownChars) {
-  const sample = knownChars.slice(0, 20).map(c => c.char).join('');
-  const target = knownChars[Math.floor(Math.random() * Math.min(knownChars.length, 15))];
-  const prompt = `Genera UNA frase in cinese mandarino usando principalmente questi caratteri: ${sample}
-Il carattere TARGET che deve essere rimosso dalla frase è: ${target.char}
+  const target = knownChars[Math.floor(Math.random() * knownChars.length)];
+  const pool = [...knownChars].filter(c => c.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 15);
+  const sample = pool.map(c => c.char).join('');
+  const prompt = `Crea UNA frase breve (5-7 caratteri) che contenga il carattere ${target.char} (${target.pinyin}, "${target.it}").
+Usa SOLO questi altri caratteri per completarla: ${sample}
+Particelle sempre permesse: 的 了 吗 呢 也 都
+Il carattere ${target.char} DEVE comparire UNA sola volta nella frase.
+Massimo 7 caratteri totali. Frase semplice, quotidiana.
 Rispondi SOLO con questo JSON valido:
-{"sentence_with_blank":"frase con ___ al posto del target","pinyin":"pinyin completo","answer":"${target.char}","translation_it":"traduzione italiana"}`;
+{"sentence_with_blank":"frase con ___ al posto di ${target.char}","pinyin":"pinyin completo della frase originale","answer":"${target.char}","translation_it":"traduzione italiana"}`;
   const text = await callGemini(prompt);
   const obj  = parseJSON(text);
   obj.targetId = target.id;
@@ -219,9 +228,12 @@ Rispondi SOLO con questo JSON valido:
 }
 
 async function generateExampleSentence(newChar, knownChars) {
-  const known20 = knownChars.slice(0, 20).map(c => c.char).join('');
-  const prompt = `Crea UNA frase di esempio in cinese mandarino che usi il carattere "${newChar.char}" (${newChar.pinyin}, "${newChar.it}").
-Usa anche alcuni di questi caratteri già noti se possibile: ${known20}
+  const shuffled = [...knownChars].sort(() => Math.random() - 0.5);
+  const known10 = shuffled.slice(0, 10).map(c => c.char).join('');
+  const prompt = `Crea UNA frase di esempio breve (5-7 caratteri) che metta in risalto il carattere ${newChar.char} (${newChar.pinyin}, "${newChar.it}").
+Preferisci questi caratteri già noti per il resto della frase: ${known10}
+Particelle sempre permesse: 的 了 吗 呢 也 都
+Priorità: chiarezza sul significato di ${newChar.char}, non naturalezza a tutti i costi.
 Rispondi SOLO con questo JSON valido:
 {"sentence":"...","pinyin":"...","translation_it":"..."}`;
   const text = await callGemini(prompt);
