@@ -156,7 +156,7 @@ const geminiCache = {};
 
 async function callGemini(prompt) {
   const key   = await getSetting('gemini_api_key', '');
-  const model = await getSetting('gemini_model', 'gemini-2.0-flash');
+  const model = await getSetting('gemini_model', 'gemini-2.5-flash');
   if (!key) throw new Error('API Key non configurata');
 
   const cacheKey = prompt.slice(0, 80);
@@ -888,7 +888,7 @@ function finishLearn() {
 // ══════════════════════════════════════════════════
 async function renderSettings() {
   document.getElementById('set-api-key').value  = await getSetting('gemini_api_key', '');
-  document.getElementById('set-model').value    = await getSetting('gemini_model', 'gemini-2.0-flash');
+  document.getElementById('set-model').value    = await getSetting('gemini_model', 'gemini-2.5-flash');
   const exCount = +(await getSetting('ex_count', '20'));
   const sl = document.getElementById('set-ex-count');
   sl.value = exCount;
